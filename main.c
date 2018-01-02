@@ -1,9 +1,16 @@
-#include <SDL.h>
-#include <SDL_opengl.h>
-
 #include <stdbool.h>
 #include <stdlib.h>
 #include <stdio.h>
+
+// OpenGL / glew Headers
+#define GLEW_STATIC
+#define GL3_PROTOTYPES 1
+#include <GL/glew.h>
+#include <GL/glu.h>
+#include <GL/gl.h>
+
+#include <SDL.h>
+#include <SDL_opengl.h>
 
 #include "smath.h"
 
@@ -12,6 +19,8 @@ struct global_events {
     bool fullscreen;
     bool quit;
     bool focus_changed;
+    bool resized;
+    sfvec2 size;
     sfvec2 mouse_pos;
 };
 
@@ -24,17 +33,19 @@ struct global_game_state {
     SDL_EventFilter watch;
     SDL_GLContext gl_context;
     SDL_Window *window;
+    sfvec4 color;
+    sfvec2 resolution;
 };
 
 void render_frame(struct global_game_state *state)
 {
-    SDL_GL_MakeCurrent(state->window, state->gl_context);
 
-    sfvec4 magenta = {.r = 0xee, .g = 0x00, .b = 0xff };
-    sfvec4 black = {.r = 0x00, .g = 0x00, .b = 0x00 };
+    state->color.r = clampf(0.0f, state->ev.mouse_pos.x / state->resolution.w, 1.0f);
+    state->color.g = clampf(0.0f, state->ev.mouse_pos.y / state->resolution.h, 1.0f);
+    state->color.b = clampf(0.0f, state->color.b, 1.0f);
 
-    glClearColor( magenta.r, magenta.g, magenta.b, magenta.a );
-    glClear( GL_COLOR_BUFFER_BIT );
+    glClearColor(state->color.r, state->color.g, state->color.b, state->color.a);
+    glClear(GL_COLOR_BUFFER_BIT);
     SDL_GL_SwapWindow(state->window);
 }
 
@@ -59,7 +70,6 @@ int SDLCALL sdl_event_dispatch(void *userdata, SDL_Event* event)
     }
     if(event->type == SDL_MOUSEMOTION) {
         SDL_MouseMotionEvent motion = event->motion;
-        //SDL_Log("Mouse moved from %d %d to %d %d", motion.x, motion.y, motion.x + motion.xrel, motion.y + motion.yrel);
         ev->mouse_pos.x = (float)(motion.x + motion.xrel);
         ev->mouse_pos.y = (float)(motion.y + motion.yrel);
     }
@@ -151,9 +161,15 @@ int SDLCALL sdl_event_dispatch(void *userdata, SDL_Event* event)
                 break;
             case SDL_WINDOWEVENT_RESIZED:
                 SDL_Log("Window %d resized to %dx%d", window.windowID, window.data1, window.data2);
+                ev->resized = true;
+                ev->size.w = window.data1;
+                ev->size.h = window.data2;
                 break;
             case SDL_WINDOWEVENT_SIZE_CHANGED:
                 SDL_Log("Window %d size changed to %dx%d", window.windowID, window.data1, window.data2);
+                ev->resized = true;
+                ev->size.w = window.data1;
+                ev->size.h = window.data2;
                 break;
             case SDL_WINDOWEVENT_MINIMIZED:
                 SDL_Log("Window %d minimized", window.windowID);
@@ -233,10 +249,10 @@ int sdl_init(struct global_game_state *state)
     state->window = SDL_CreateWindow("title",
         SDL_WINDOWPOS_UNDEFINED,
         SDL_WINDOWPOS_UNDEFINED,
-        512,
-        512,
+        state->resolution.w,
+        state->resolution.h,
         SDL_WINDOW_OPENGL | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_BORDERLESS /* | SDL_WINDOW_RESIZABLE | SDL_WINDOW_FULLSCREEN_DESKTOP | SDL_WINDOW_INPUT_GRABBED */
-    );
+        );
     if (state->window == NULL) {
         // In the case that the window could not be made...
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Could not create window: %s", SDL_GetError());
@@ -260,22 +276,52 @@ int sdl_init(struct global_game_state *state)
         }
     }
     state->gl_context = SDL_GL_CreateContext(state->window);
+    // Set our OpenGL version.
+    // SDL_GL_CONTEXT_CORE gives us only the newer version, deprecated functions are disabled
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 
-    /*
-    SDL_AddEventWatch(sdl_event_dispatch, &(state->ev));
-    */
+    // 3.2 is part of the modern versions of OpenGL, but most video cards whould be able to run it
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 
+    // Turn on double buffering with a 24bit Z buffer.
+    // You may need to change this to 16 or 32 for your system
+    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+    // This makes our buffer swap syncronized with the monitor's vertical refresh
+    SDL_GL_SetSwapInterval(1);
+
+    // Init GLEW
+    // Apparently, this is needed for Apple. Thanks to Ross Vander for letting me know
+#ifndef __APPLE__
+    glewExperimental = GL_TRUE;
+    glewInit();
+#endif
+
+    // SDL_AddEventWatch(sdl_event_dispatch, &(state->ev));
+
+    int major, minor;
+    SDL_GL_GetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, &major);
+    SDL_GL_GetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, &minor);
+    SDL_Log("OpenGL version: %d.%d", major, minor);
+
+    //sfvec4 black = {.r = 0x00, .g = 0x00, .b = 0x00 };
+    sfvec4 magenta = {.r = 0xee, .g = 0x00, .b = 0xff };
+
+    glClearColor(magenta.r, magenta.g, magenta.b, magenta.a );
+    glClear( GL_COLOR_BUFFER_BIT );
+    SDL_GL_SwapWindow(state->window);
+
+    SDL_GL_MakeCurrent(state->window, state->gl_context);
     return 0;
 }
 
 void sdl_cleanup(struct global_game_state *state)
 {
-    SDL_DelEventWatch(sdl_event_dispatch, &(state->ev));
+    //SDL_DelEventWatch(sdl_event_dispatch, &(state->ev));
     SDL_GL_DeleteContext(state->gl_context);
     SDL_Renderer *renderer = SDL_GetRenderer(state->window);
-    if (NULL != renderer) {
-        SDL_DestroyRenderer(renderer);
-    }
+    if (NULL != renderer) { SDL_DestroyRenderer(renderer); }
     SDL_DestroyWindow(state->window);
     SDL_Quit();
 }
@@ -283,12 +329,20 @@ void sdl_cleanup(struct global_game_state *state)
 int main(int argc, char *argv[])
 {
     struct global_game_state game = {NULL};
+    game.resolution.w = 512;
+    game.resolution.h = 512;
+
     SDL_Event event;
 
     if (sdl_init(&game) != 0) { return 1; }
 
     while (!game.ev.quit) {
         while (SDL_PollEvent(&event)) { sdl_event_dispatch(&game.ev, &event); }
+
+        if (game.ev.resized) {
+            game.resolution.w = game.ev.size.w;
+            game.resolution.h = game.ev.size.h;
+        }
 
         if (game.ev.fullscreen) {
             SDL_SetWindowFullscreen(game.window, SDL_WINDOW_FULLSCREEN_DESKTOP);

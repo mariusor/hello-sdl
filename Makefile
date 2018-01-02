@@ -1,9 +1,9 @@
 BIN_NAME = sdl2_test
 CC ?= cc
-LIBS = sdl2 gl
+LIBS = sdl2 gl glew #glu
 COMPILE_FLAGS = -Wpedantic -Wall -Wextra
 LINK_FLAGS =
-RCOMPILE_FLAGS = 
+RCOMPILE_FLAGS =
 DCOMPILE_FLAGS = -g -DDEBUG
 RLINK_FLAGS =
 DLINK_FLAGS =
