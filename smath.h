@@ -6,6 +6,10 @@ typedef union sfvec2 {
         float x;
         float y;
     };
+    struct {
+        float w;
+        float h;
+    };
     float e[2];
 } sfvec2;
 
@@ -49,5 +53,24 @@ typedef union sfvec4 {
 
     float e[4];
 } sfvec4;
+
+float lerpf(float A, float t, float B)
+{
+    float Result = (1.0f - t)*A + t*B;
+
+    return(Result);
+}
+
+float clampf(float min, float value, float max)
+{
+    float result = value;
+    if (result < min) {
+        result = min;
+    }
+    if (result > max) {
+        result = max;
+    }
+    return result;
+}
 
 #endif //SMATH_H
