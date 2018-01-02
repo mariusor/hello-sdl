@@ -139,7 +139,7 @@ int SDLCALL sdl_event_dispatch(void *userdata, SDL_Event* event)
                 SDL_Log("Window %d exposed", window.windowID);
                 break;
             case SDL_WINDOWEVENT_MOVED:
-                SDL_Log("Window %d moved to %d,%d", window.windowID, window.data1, window.data2);
+                //SDL_Log("Window %d moved to %d,%d", window.windowID, window.data1, window.data2);
                 break;
             case SDL_WINDOWEVENT_RESIZED:
                 SDL_Log("Window %d resized to %dx%d", window.windowID, window.data1, window.data2);
@@ -229,29 +229,30 @@ int sdl_init(struct global_game_state *state)
         SDL_WINDOWPOS_UNDEFINED,
         512,
         512,
-        SDL_WINDOW_OPENGL | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_BORDERLESS /* | SDL_WINDOW_FULLSCREEN_DESKTOP | SDL_WINDOW_INPUT_GRABBED | SDL_WINDOW_RESIZABLE*/
+        SDL_WINDOW_OPENGL | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_BORDERLESS /* | SDL_WINDOW_RESIZABLE | SDL_WINDOW_FULLSCREEN_DESKTOP | SDL_WINDOW_INPUT_GRABBED */
     );
     if (state->window == NULL) {
         // In the case that the window could not be made...
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Could not create window: %s", SDL_GetError());
         return 1;
     } else {
-        int ww, wh, glw, glh, rw, rh;
+        int ww, wh, glw, glh;
         SDL_GetWindowSize(state->window, &ww, &wh);
         SDL_Log("Window resolution: %dx%d", ww, wh);
         SDL_GL_GetDrawableSize(state->window, &glw, &glh);
         SDL_Log("Draw resolution: %dx%d", glw, glh);
-        SDL_Renderer *renderer = SDL_GetRenderer(state->window);
-
-        if (NULL != renderer) {
-            if (SDL_GetRendererOutputSize(renderer, &rw, &rh) == 0) {
-                SDL_Log("Resolution: %dx%d", rw, rh);
-            } else {
-                SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Could not get render resolution: %s", SDL_GetError());
-            }
-        }
     }
 
+    SDL_Renderer *renderer = SDL_CreateRenderer(state->window, -1, 0);
+    //SDL_Renderer *renderer = SDL_GetRenderer(state->window);
+    if (NULL != renderer) {
+        int rw, rh;
+        if (SDL_GetRendererOutputSize(renderer, &rw, &rh) == 0) {
+            SDL_Log("Render resolution: %dx%d", rw, rh);
+        } else {
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Could not get render resolution: %s", SDL_GetError());
+        }
+    }
     state->gl_context = SDL_GL_CreateContext(state->window);
 
     SDL_AddEventWatch(sdl_event_dispatch, &(state->ev));
