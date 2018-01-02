@@ -17,12 +17,12 @@ struct global_game_state {
     SDL_Window *window;
 };
 
-void render_frame(struct global_game_state *state, unsigned short i, unsigned short j, unsigned short k)
+void render_frame(struct global_game_state *state)
 {
     //SDL_Log("Ouput[rgb]: %03u:%03u:%03u", i, j, k);
     SDL_GL_MakeCurrent(state->window, state->gl_context);
 
-    glClearColor( (float)i/(float)0xFF, (float)j/(float)0xff, (float)k/(float)0xff, 1.0f );
+    //glClearColor( (float)i/(float)0xFF, (float)j/(float)0xff, (float)k/(float)0xff, 1.0f );
     glClear( GL_COLOR_BUFFER_BIT );
 
     SDL_GL_SwapWindow(state->window);
@@ -104,34 +104,20 @@ int main(int argc, char *argv[])
 {
     struct global_game_state game = {NULL};
 
-    unsigned short i = 0;
-    unsigned short j = 0;
-    unsigned short k = 0;
-
     if (sdl_init(&game) != 0) { return 1; }
 
     while(!game.ev.quit) {
         SDL_Event event;
-
-        if (!game.ev.focused) {
-           SDL_Delay(2);
-           continue;
-        }
-
-        for (i = 0; i < 0xff; i+=10) {
-            for (j = 0; j < 0xff; j+=10) {
-                for (k = 0; k < 0xff; k+=10) {
-                    while( SDL_PollEvent(&event) ) { }
-                    render_frame(&game, i, j, k);
-                    if (game.ev.quit) { break; }
-                }
-                if (game.ev.quit) { break; }
-            }
-            if (game.ev.quit) { break; }
+        SDL_PollEvent(&event);
+        if (game.ev.focused) {
+           render_frame(&game);
+        } else {
+           SDL_Delay(200);
+           SDL_Log("Window not focused, skipping render");
         }
     }
 
-    if (game.ev.quit) { SDL_Log("Closing."); }
+    SDL_Log("Closing.");
 
     sdl_cleanup(&game);
     return EXIT_SUCCESS;
