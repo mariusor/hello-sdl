@@ -204,11 +204,6 @@ int sdl_init(struct global_game_state *state)
 {
     SDL_LogSetPriority(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_INFO);
 
-    int i, display_mode_count;
-    SDL_DisplayMode mode;
-    Uint32 f;
-
-
     Uint32 subsystem_init = SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER);
     if (subsystem_init != 0) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to initialize SDL: %s", SDL_GetError());
