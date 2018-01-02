@@ -5,10 +5,14 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+#include "smath.h"
+
 struct global_events {
     bool focused;
     bool fullscreen;
     bool quit;
+    bool focus_changed;
+    sfvec2 mouse_pos;
 };
 
 struct global_game_state {
@@ -24,19 +28,20 @@ struct global_game_state {
 
 void render_frame(struct global_game_state *state)
 {
-    //SDL_Log("Ouput[rgb]: %03u:%03u:%03u", i, j, k);
     SDL_GL_MakeCurrent(state->window, state->gl_context);
 
     sfvec4 magenta = {.r = 0xee, .g = 0x00, .b = 0xff };
+    sfvec4 black = {.r = 0x00, .g = 0x00, .b = 0x00 };
+
     glClearColor( magenta.r, magenta.g, magenta.b, magenta.a );
     glClear( GL_COLOR_BUFFER_BIT );
-
     SDL_GL_SwapWindow(state->window);
 }
 
 int SDLCALL sdl_event_dispatch(void *userdata, SDL_Event* event)
 {
     struct global_events *ev = userdata;
+    bool previous_focus = ev->focused;
 
     if (event->type == SDL_APP_WILLENTERBACKGROUND || event->type == SDL_APP_DIDENTERBACKGROUND) {
         SDL_WindowEvent window = event->window;
@@ -54,7 +59,9 @@ int SDLCALL sdl_event_dispatch(void *userdata, SDL_Event* event)
     }
     if(event->type == SDL_MOUSEMOTION) {
         SDL_MouseMotionEvent motion = event->motion;
-        SDL_Log("Mouse moved from %d %d to %d %d", motion.x, motion.y, motion.x + motion.xrel, motion.y + motion.yrel);
+        //SDL_Log("Mouse moved from %d %d to %d %d", motion.x, motion.y, motion.x + motion.xrel, motion.y + motion.yrel);
+        ev->mouse_pos.x = (float)(motion.x + motion.xrel);
+        ev->mouse_pos.y = (float)(motion.y + motion.yrel);
     }
     if(event->type == SDL_MOUSEBUTTONUP) {
         SDL_MouseButtonEvent button = event->button;
@@ -195,7 +202,10 @@ int SDLCALL sdl_event_dispatch(void *userdata, SDL_Event* event)
     if(event->type == SDL_SYSWMEVENT) {
         SDL_Log("System event");
     }
-
+    if (ev->focused != previous_focus) {
+        ev->focus_changed = true;
+        SDL_Log("Focus changed: %s -> %s", previous_focus ? "focused" : "unfocused", ev->focused ? "focused" : "unfocused");
+    }
 
     return 1;
 }
@@ -251,8 +261,9 @@ int sdl_init(struct global_game_state *state)
     }
     state->gl_context = SDL_GL_CreateContext(state->window);
 
+    /*
     SDL_AddEventWatch(sdl_event_dispatch, &(state->ev));
-    state->ev.focused = true;
+    */
 
     return 0;
 }
@@ -261,6 +272,10 @@ void sdl_cleanup(struct global_game_state *state)
 {
     SDL_DelEventWatch(sdl_event_dispatch, &(state->ev));
     SDL_GL_DeleteContext(state->gl_context);
+    SDL_Renderer *renderer = SDL_GetRenderer(state->window);
+    if (NULL != renderer) {
+        SDL_DestroyRenderer(renderer);
+    }
     SDL_DestroyWindow(state->window);
     SDL_Quit();
 }
@@ -268,33 +283,29 @@ void sdl_cleanup(struct global_game_state *state)
 int main(int argc, char *argv[])
 {
     struct global_game_state game = {NULL};
+    SDL_Event event;
 
     if (sdl_init(&game) != 0) { return 1; }
 
-    bool out_msg = true;
-    while(!game.ev.quit) {
-        SDL_Event event;
-        SDL_PollEvent(&event);
+    while (!game.ev.quit) {
+        while (SDL_PollEvent(&event)) { sdl_event_dispatch(&game.ev, &event); }
+
         if (game.ev.fullscreen) {
-            SDL_SetWindowFullscreen(game.window, SDL_WINDOW_FULLSCREEN);
+            SDL_SetWindowFullscreen(game.window, SDL_WINDOW_FULLSCREEN_DESKTOP);
         } else {
             SDL_SetWindowFullscreen(game.window, 0);
         }
+        if (game.ev.focus_changed) {
+            if (game.ev.focused) { SDL_Log("Rendering");
+            } else { SDL_Log("Stopped rendering"); }
+            game.ev.focus_changed = false;
+        }
         if (game.ev.focused) {
-            if (out_msg) {
-                SDL_Log("Rendering");
-                out_msg = false;
-            }
             render_frame(&game);
         } else {
-            if (out_msg) {
-                SDL_Log("Skipping rendering");
-                out_msg = false;
-            }
             SDL_Delay(200);
         }
     }
-
     SDL_Log("Closing.");
 
     sdl_cleanup(&game);
