@@ -27,7 +27,8 @@ void render_frame(struct global_game_state *state)
     //SDL_Log("Ouput[rgb]: %03u:%03u:%03u", i, j, k);
     SDL_GL_MakeCurrent(state->window, state->gl_context);
 
-    //glClearColor( (float)i/(float)0xFF, (float)j/(float)0xff, (float)k/(float)0xff, 1.0f );
+    sfvec4 magenta = {.r = 0xee, .g = 0x00, .b = 0xff };
+    glClearColor( magenta.r, magenta.g, magenta.b, magenta.a );
     glClear( GL_COLOR_BUFFER_BIT );
 
     SDL_GL_SwapWindow(state->window);
