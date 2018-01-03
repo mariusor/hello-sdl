@@ -3,10 +3,10 @@
 #include <stdio.h>
 
 // OpenGL / glew Headers
-#define GLEW_STATIC
+//#define GLEW_STATIC
 #define GL3_PROTOTYPES 1
 #include <GL/glew.h>
-#include <GL/glu.h>
+//#include <GL/glu.h>
 #include <GL/gl.h>
 
 #include <SDL.h>
@@ -37,17 +37,24 @@ struct global_game_state {
     sfvec2 resolution;
 };
 
-void render_frame(struct global_game_state *state)
-{
-
-    state->color.r = clampf(0.0f, state->ev.mouse_pos.x / state->resolution.w, 1.0f);
-    state->color.g = clampf(0.0f, state->ev.mouse_pos.y / state->resolution.h, 1.0f);
-    state->color.b = clampf(0.0f, state->color.b, 1.0f);
-
-    glClearColor(state->color.r, state->color.g, state->color.b, state->color.a);
-    glClear(GL_COLOR_BUFFER_BIT);
-    SDL_GL_SwapWindow(state->window);
-}
+#define QUOTE(...) #__VA_ARGS__
+const char *vertex_shader = " \
+#version 130\n \
+layout(location = 0) in vec3 vertexPosition_modelspace; \n\
+void main() \
+{ \
+    gl_Position.xyz = vertexPosition_modelspace; \
+    gl_Position.w = 1.0; \
+} \
+";
+const char *fragment_shader = " \
+#version 130\n \
+out vec3 color; \n\
+void main() \
+{ \
+    color = vec3(1,0,0); \
+} \
+";
 
 int SDLCALL sdl_event_dispatch(void *userdata, SDL_Event* event)
 {
@@ -226,6 +233,29 @@ int SDLCALL sdl_event_dispatch(void *userdata, SDL_Event* event)
     return 1;
 }
 
+GLuint load_shader(const char* shader_source, GLint shader_type)
+{
+    GLint compile_status = GL_FALSE;
+    int log_length;
+
+    GLuint result = glCreateShader(shader_type);
+    SDL_Log("Compiling shader: %s", shader_source);
+    glShaderSource(result, 1, &shader_source, NULL);
+    glCompileShader(result);
+
+    glGetShaderiv(result, GL_COMPILE_STATUS, &compile_status);
+    glGetShaderiv(result, GL_INFO_LOG_LENGTH, &log_length);
+
+    if (log_length > 0) {
+        char *error = calloc(1, (sizeof(char) * log_length) + 1);
+        glGetShaderInfoLog(result, log_length, NULL, error);
+
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Shader compile error: %s", error);
+    }
+
+    return result;
+}
+
 int sdl_init(struct global_game_state *state)
 {
     SDL_LogSetPriority(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_INFO);
@@ -277,12 +307,8 @@ int sdl_init(struct global_game_state *state)
     }
     state->gl_context = SDL_GL_CreateContext(state->window);
     // Set our OpenGL version.
-    // SDL_GL_CONTEXT_CORE gives us only the newer version, deprecated functions are disabled
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-
-    // 3.2 is part of the modern versions of OpenGL, but most video cards whould be able to run it
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 4);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 
     // Turn on double buffering with a 24bit Z buffer.
@@ -295,7 +321,9 @@ int sdl_init(struct global_game_state *state)
     // Apparently, this is needed for Apple. Thanks to Ross Vander for letting me know
 #ifndef __APPLE__
     glewExperimental = GL_TRUE;
-    glewInit();
+    if (glewInit() != GLEW_OK) {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to initialize GLEW");
+    }
 #endif
 
     // SDL_AddEventWatch(sdl_event_dispatch, &(state->ev));
@@ -305,14 +333,43 @@ int sdl_init(struct global_game_state *state)
     SDL_GL_GetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, &minor);
     SDL_Log("OpenGL version: %d.%d", major, minor);
 
+#if 1
     //sfvec4 black = {.r = 0x00, .g = 0x00, .b = 0x00 };
     sfvec4 magenta = {.r = 0xee, .g = 0x00, .b = 0xff };
 
     glClearColor(magenta.r, magenta.g, magenta.b, magenta.a );
-    glClear( GL_COLOR_BUFFER_BIT );
+    glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
     SDL_GL_SwapWindow(state->window);
+#endif
 
     SDL_GL_MakeCurrent(state->window, state->gl_context);
+
+    GLuint vert_shader_id = load_shader(vertex_shader, GL_VERTEX_SHADER);
+    GLuint frag_shader_id = load_shader(fragment_shader, GL_FRAGMENT_SHADER);
+
+    GLuint program_id = glCreateProgram();
+    glAttachShader(program_id, vert_shader_id);
+    glAttachShader(program_id, frag_shader_id);
+
+    GLint program_status;
+    int log_length;
+    glGetProgramiv(program_id, GL_LINK_STATUS, &program_status);
+    glGetProgramiv(program_id, GL_INFO_LOG_LENGTH, &log_length);
+    if (log_length > 0) {
+        char *error = calloc(1, (sizeof(char) * log_length) + 1);
+        glGetShaderInfoLog(program_status, log_length, NULL, error);
+
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Shader compile error: %s", error);
+    }
+
+    glDetachShader(program_id, vert_shader_id);
+    glDetachShader(program_id, frag_shader_id);
+
+    glDeleteShader(vert_shader_id);
+    glDeleteShader(frag_shader_id);
+
+    glUseProgram(program_id);
+
     return 0;
 }
 
@@ -324,6 +381,55 @@ void sdl_cleanup(struct global_game_state *state)
     if (NULL != renderer) { SDL_DestroyRenderer(renderer); }
     SDL_DestroyWindow(state->window);
     SDL_Quit();
+}
+
+static bool initialized = false;
+void render_frame(struct global_game_state *state)
+{
+    GLuint vertexbuffer;
+    if (true || !initialized) {
+        GLuint VertexArrayID;
+        glGenVertexArrays(1, &VertexArrayID);
+        glBindVertexArray(VertexArrayID);
+
+        const GLfloat g_vertex_buffer_data[] = {
+            -1.0f, -1.0f, 0.0f,
+            1.0f, -1.0f, 0.0f,
+            0.0f,  1.0f, 0.0f,
+        };
+        glGenBuffers(1, &vertexbuffer);
+        glBindBuffer(GL_ARRAY_BUFFER, vertexbuffer);
+        glBufferData(GL_ARRAY_BUFFER,
+            sizeof(g_vertex_buffer_data),
+            g_vertex_buffer_data,
+            GL_STATIC_DRAW
+        );
+
+        initialized = true;
+    }
+
+    glEnableVertexAttribArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, vertexbuffer);
+    glVertexAttribPointer(
+        0,
+        3,
+        GL_FLOAT,
+        GL_FALSE,
+        0,
+        (void*)0
+    );
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+    glDisableVertexAttribArray(0);
+#if 0
+    state->color.r = clampf(0.0f, state->ev.mouse_pos.x / state->resolution.w, 1.0f);
+    state->color.g = clampf(0.0f, state->ev.mouse_pos.y / state->resolution.h, 1.0f);
+    state->color.b = clampf(0.0f, state->color.b, 1.0f);
+
+    glClearColor(state->color.r, state->color.g, state->color.b, state->color.a);
+    glClear(GL_COLOR_BUFFER_BIT);
+#endif
+    // Swap buffers
+    SDL_GL_SwapWindow(state->window);
 }
 
 int main(int argc, char *argv[])
